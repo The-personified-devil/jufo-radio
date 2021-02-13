@@ -9,7 +9,7 @@ include external/lvgl/lvgl.mk
 CC = g++
 DIR ?= ${shell pwd}
 OBJEXT ?= .o
-BIN = ${OUT_DIR}/demo
+BIN = ${OUT_DIR}/radio
 
 MKDIR_P = mkdir -p
 OUT_DIR = bin
@@ -26,22 +26,23 @@ WARNINGS ?= -w -Wall -Wextra \
 			-Wempty-body -Wshift-negative-value -Wstack-usage=2048 \
             -Wtype-limits -Wsizeof-pointer-memaccess -Wpointer-arith
 
-CSRCS += imgbtn_blue.c imgbtn_green.c play_pause_icn.c
 
 #Collect the files to compile
-MAINSRC = src/helloworld.cpp
+MAINSRC = src/main.cpp
+CSRCS += $(MAINSRC)
+
 
 AOBJS = $(ASRCS:.S=$(OBJEXT))
-COBJS_RAW = $(CSRCS:.c=$(OBJEXT))
+COBJS_RAW_1 = $(CSRCS:.c=$(OBJEXT))
+COBJS_RAW = $(COBJS_RAW_1:.cpp=$(OBJEXT))
 COBJS = $(shell for i in $(COBJS_RAW); do \
             cobj=$(OBJ_DIR)/$$i; \
 			mkdir -p $$(dirname $$cobj); \
 			printf " $$cobj"; \
         done)
 
-MAINOBJ = ${OBJ_DIR}/$(MAINSRC:.cpp=$(OBJEXT))
 
-SRCS = $(ASRCS) $(CSRCS) $(MAINSRC)
+SRCS = $(ASRCS) $(CSRCS)
 OBJS = $(AOBJS) $(COBJS)
 
 
@@ -50,13 +51,15 @@ all: directories default
 directories: ${OUT_DIR} ${OBJ_DIR}
 
 print:
-	@echo $(CSRCS)
+	@echo $(COBJS_RAW2)
+	@echo fuckme\n
+	@echo $(COBJS_RAW)
 
-default: $(AOBJS) $(COBJS) $(MAINOBJ)
-	@$(CC) -o $(BIN) $(MAINOBJ) $(AOBJS) $(COBJS) $(LDFLAGS)  # /usr/local/lib/libvlc.so.5.6.0
+default: $(AOBJS) $(COBJS)
+	@$(CC) -o $(BIN) $(AOBJS) $(COBJS) $(LDFLAGS)  # /usr/local/lib/libvlc.so.5.6.0
 
 clean: 
-	rm -f $(BIN) $(AOBJS) $(COBJS) $(MAINOBJ)
+	rm -f $(BIN) $(AOBJS) $(COBJS)
 
 
 # Create the base directories
