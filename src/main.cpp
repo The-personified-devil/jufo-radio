@@ -20,13 +20,10 @@
 static void hal_init(void);
 static int tick_thread(void *data);
 static void memory_monitor(lv_task_t *param);
-static void dropdown_event_handler(lv_obj_t * obj, lv_event_t event);
-void btn_event_handler(lv_obj_t * obj, lv_event_t event);
-// void list_file_event_handler (lv_obj_t * obj, lv_event_t event);
-// void list_dir_event_handler (lv_obj_t * obj, lv_event_t event);
-// void list_sel_file_handler (lv_obj_t * obj, lv_event_t event);
-void onEndReached (VLC::MediaPtr, int gg);
-// void listdrag(lv_obj_t *obj, lv_event_t event);
+
+/* Callbacks */
+void src_ddl_evHandler (lv_obj_t* obj, lv_event_t event);
+void onEndReached ();
 
 lv_indev_t *kb_indev;
 lv_indev_t *mouse_indev;
@@ -40,7 +37,7 @@ class mp
 
   mp()
   {
-    // auto regevent = evMgr.onEndReached(onEndReached);
+    auto regevent = evMgr.onEndReached(onEndReached);
   }
 
   void setMedia(std::string mediaFile)
@@ -52,13 +49,15 @@ class mp
 
 class file_selector {
   public:
+    std::map<lv_obj_t*, std::pair<std::filesystem::directory_entry, VLC::Media>> file_map;
+
     void create_ddl () {
       lv_obj_t * src_list = lv_list_create(lv_scr_act(), NULL);
       lv_obj_set_size(src_list, 500, 200);
       lv_obj_align(src_list, NULL, LV_ALIGN_CENTER, 0, 0);
 
-      std::map<lv_obj_t*, VLC::Media> file_map;
-      auto dir_iterator = std::filesystem::directory_iterator(".");
+
+      auto dir_iterator = std::filesystem::directory_iterator("bin");
       lv_obj_t* list_btn;
 
       for(auto& p : dir_iterator) {
@@ -73,18 +72,35 @@ class file_selector {
           list_btn = lv_list_add_btn (src_list, LV_SYMBOL_FILE, p.path().filename().c_str());
         }
 
-        file_map[list_btn] = media;
+        lv_obj_set_event_cb(list_btn, src_ddl_evHandler);
+        file_map[list_btn].first = p;
+        file_map[list_btn].second = media;
       }
 
       for (auto& p : file_map) {
-        std::cout << p.first << " : " << p.second << '\n';
+        std::cout << p.first << " : " << p.second.first << " : " << p.second.second << '\n';
       }
     }
 } file_selector_obj;
 
 
-void onEndReached(VLC::MediaPtr mPtr, int gg) {
-  std::cout << "cock" << std::endl;
+void src_ddl_evHandler (lv_obj_t* obj, lv_event_t event) {
+  static std::chrono::time_point<std::chrono::steady_clock> time_point;
+  if (event == LV_EVENT_SHORT_CLICKED) {
+    long long duration = std::chrono::duration_cast<std::chrono::milliseconds>
+      (std::chrono::steady_clock::now().time_since_epoch() - time_point.time_since_epoch()).count();
+    time_point = std::chrono::steady_clock::now();
+
+    if (duration <= 500) {
+      auto media_file = file_selector_obj.file_map.at(obj);
+      mp_obj.plr.setMedia(media_file.second);
+      mp_obj.plr.play();
+    }
+  }
+}
+
+void onEndReached () {
+
 }
 
 int main(int argc, char **argv)
@@ -94,11 +110,7 @@ int main(int argc, char **argv)
 
   /*Initialize the HAL (display, input devices, tick) for LVGL*/
   hal_init();
-  // lv_ex_dropdown_1(); // Use Constructor
-  mp_obj.setMedia("Bad Apple but it's in 4k 60fps-d-eAoSNUy1E.mkv");
   file_selector_obj.create_ddl();
-  // filemgr_obj.filelist();
-  // lv_ex_imgbtn_1();
 
   while (1) {
     /* Periodically call the lv_task handler.
