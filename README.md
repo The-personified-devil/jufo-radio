@@ -2,7 +2,8 @@
 
 The goal of this project is to digitalize an old radio and present the project at the "Jugend Forscht" science fair.
 
-Because of this I will not be accepting pull requests etc. If you found a bug or have criticism about the source code, I'd appreciate if you would report it on the slack server.
+Because of this I will not be accepting pull requests etc.
+In the offchance that you still have a suggestion or an objection about the source code, please make your voice heard via github discussions
 
 ## Notes
 

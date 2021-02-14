@@ -46,6 +46,19 @@ class mp
   }
 } mp_obj;
 
+class gui {
+public:
+  lv_obj_t* back_btn = lv_btn_create(lv_scr_act(), NULL);
+  lv_obj_t* back_btn_label = lv_label_create(back_btn, NULL);
+
+  void init_back_btn () {
+    lv_obj_set_size(back_btn, 20, 20);
+    lv_obj_align(back_btn, NULL, LV_ALIGN_IN_TOP_LEFT, 0, 0);
+    
+    lv_label_set_text(back_btn_label, LV_SYMBOL_LEFT);
+
+  }
+};
 
 class file_selector {
   public:
@@ -111,6 +124,8 @@ int main(int argc, char **argv)
   /*Initialize the HAL (display, input devices, tick) for LVGL*/
   hal_init();
   file_selector_obj.create_ddl();
+  gui gui_obj;
+  gui_obj.init_back_btn();
 
   while (1) {
     /* Periodically call the lv_task handler.
