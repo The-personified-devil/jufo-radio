@@ -1,7 +1,7 @@
 #
 # Makefile
 #
-
+.DEFAULT_GOAL := execute
 # Included Makefiles
 include external/lvgl/lvgl.mk
 
@@ -15,7 +15,7 @@ MKDIR_P = mkdir -p
 OUT_DIR = bin
 OBJ_DIR = obj
 
-LDFLAGS ?= -lSDL2 -lm -lpthread -g -lvlc
+LDFLAGS ?= -lSDL2 -lm -lpthread -g -lvlc -pg
 CFLAGS += -std=c++17
 
 WARNINGS ?= -w -Wall -Wextra \
@@ -46,17 +46,17 @@ SRCS = $(ASRCS) $(CSRCS)
 OBJS = $(AOBJS) $(COBJS)
 
 
-all: directories default
+all: directories $(AOBJS) $(COBJS)
+	@$(CC) -o $(BIN) $(AOBJS) $(COBJS) $(LDFLAGS)  # /usr/local/lib/libvlc.so.5.6.0
 
 directories: ${OUT_DIR} ${OBJ_DIR}
 
 print:
 	@echo $(COBJS_RAW2)
-	@echo fuckme\n
 	@echo $(COBJS_RAW)
 
-default: $(AOBJS) $(COBJS)
-	@$(CC) -o $(BIN) $(AOBJS) $(COBJS) $(LDFLAGS)  # /usr/local/lib/libvlc.so.5.6.0
+execute: all
+	@./bin/radio
 
 clean: 
 	rm -f $(BIN) $(AOBJS) $(COBJS)

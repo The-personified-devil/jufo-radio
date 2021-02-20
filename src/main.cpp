@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <map>
 #include <thread>
+#include <array>
 
 #include <SDL2/SDL.h>
 #include <vlcpp/vlc.hpp>
@@ -14,21 +15,24 @@
 #include "../external/lvgl/lv_drivers/display/monitor.h"
 #include "../external/lvgl/lv_drivers/indev/mouse.h"
 
+#include "stuff.hpp"
+
 
 //#define _DEFAULT_SOURCE /* needed for usleep() */
 #define SDL_MAIN_HANDLED    /*To fix SDL's "undefined reference to WinMain" issue*/
 
 static void hal_init(void);
 static int tick_thread(void *data);
-static void memory_monitor(lv_task_t *param);
 bool is_double_tap(lv_obj_t *& obj, lv_event_t&);
 
 /* Callbacks */
+void back_btn_cb(lv_obj_t *obj, lv_event_t event);
 void src_ddl_evHandler(lv_obj_t *obj, lv_event_t event);
 void onEndReached();
 
 lv_indev_t *kb_indev;
 lv_indev_t *mouse_indev;
+
 
 class mp
 {
@@ -37,9 +41,16 @@ public:
    VLC::MediaPlayer             plr         = VLC::MediaPlayer(vlcInstance);
    VLC::MediaPlayerEventManager evMgr       = plr.eventManager();
 
+   VLC::MediaList       mList       = VLC::MediaList(vlcInstance);
+   VLC::MediaListPlayer mListPlayer = VLC::MediaListPlayer(vlcInstance);
+
    mp()
    {
       auto regevent = evMgr.onEndReached(onEndReached);
+
+      mListPlayer.setMediaPlayer(plr);
+      mListPlayer.setMediaList(mList);
+      // vlcInstance.addIntf((std::string)"");
    }
 
    void setMedia(std::string mediaFile)
@@ -51,15 +62,9 @@ public:
 class gui_level_base
 {
 public:
-   virtual gui_level_base *get_ptr()
+   virtual ~gui_level_base()
    {
-      return(this);
    }
-
-   static gui_level_base *create()
-   {
-      return(new gui_level_base);
-   };
 };
 
 class gui_mgr
@@ -67,16 +72,23 @@ class gui_mgr
 public:
    gui_level_base * gui_level = nullptr;
    gui_level_base * (*create_parent_func)() = nullptr;
-
-   using create_lvl_ptr_t = gui_level_base * (*)();
-   void change_gui_level(create_lvl_ptr_t create_level_ptr)
+   using            create_lvl_ptr_t = gui_level_base * (*)();
+   void change_gui_level(create_lvl_ptr_t create_lvl_ptr, create_lvl_ptr_t create_parent_lvl_ptr)
    {
-      gui_level = create_level_ptr();
-      std::cout << gui_level->get_ptr() << std::endl;
-   }
-};
+      if (create_parent_lvl_ptr)
+      {
+         create_parent_func = create_parent_lvl_ptr;
+      }
 
-class back_btn: public gui_level_base
+      if (create_lvl_ptr)
+      {
+         delete gui_level;
+         gui_level = create_lvl_ptr();
+      }
+   }
+} gui_mgr_obj;
+
+class back_level_btn
 {
 public:
    lv_obj_t * back_btn       = lv_btn_create(lv_scr_act(), NULL);
@@ -84,7 +96,7 @@ public:
    lv_style_t back_btn_style;
    lv_style_t back_btn_label_style;
 
-   void init_back_btn()
+   back_level_btn()
    {
       lv_obj_set_size(back_btn, 50, 50);
       lv_obj_align(back_btn, NULL, LV_ALIGN_IN_TOP_LEFT, 0, 0);
@@ -98,29 +110,47 @@ public:
       lv_style_init(&back_btn_style);
       lv_style_set_opa_scale(&back_btn_style, LV_STATE_DEFAULT, LV_OPA_TRANSP);
       lv_obj_add_style(back_btn, LV_BTN_PART_MAIN, &back_btn_style);
-      // lv_obj_set_event_cb()
    }
 };
 
-class file_selector {
+class md_list_mgr: public gui_level_base
+{
+public:
+   md_list_mgr ()
+   {
+      std::cout << "Reached md_list_mgr" << std::endl;
+   }
+
+   static gui_level_base* create()
+   {
+      return(new md_list_mgr);
+   }
+};
+
+class file_selector: public gui_level_base
+{
 public:
    std::map < lv_obj_t *, std::pair < std::filesystem::directory_entry, VLC::Media >> file_map;
-
-   void create_ddl()
+   lv_obj_t *src_list = lv_list_create(lv_scr_act(), NULL);
+   lv_obj_t *md_list  = lv_list_create(lv_scr_act(), NULL);
+   file_selector()
    {
-      lv_obj_t *src_list = lv_list_create(lv_scr_act(), NULL);
+      lv_obj_set_size(src_list, 390, 410);
+      lv_obj_align(src_list, NULL, LV_ALIGN_IN_LEFT_MID, 5, 30);
 
-      lv_obj_set_size(src_list, 500, 200);
-      lv_obj_align(src_list, NULL, LV_ALIGN_CENTER, 0, 0);
-
+      lv_obj_set_size(md_list, 390, 410);
+      lv_obj_align(md_list, NULL, LV_ALIGN_IN_RIGHT_MID, -5, 30);
+      lv_obj_t *src_list_scrbl = lv_page_get_scrollable(src_list);
+      lv_obj_t *md_list_scrbl  = lv_page_get_scrollable(md_list);
 
       auto      dir_iterator = std::filesystem::directory_iterator("bin");
-      lv_obj_t *list_btn;
+      lv_obj_t *list_btn     = nullptr;
 
       for (auto& p : dir_iterator)
       {
          std::cout << p.path() << '\n';
-         auto media = VLC::Media(mp_obj.vlcInstance, p.path().c_str(), VLC::Media::FromPath);
+         VLC::Media media;
+         auto       media_ext = make_array(".mp3", ".mp4", ".mkv", ".webm");
 
          if (p.is_directory())
          {
@@ -128,12 +158,22 @@ public:
          }
          else
          {
-            list_btn = lv_list_add_btn(src_list, LV_SYMBOL_FILE, p.path().filename().c_str());
+            for (auto ext : media_ext)
+            {
+               if (ext == p.path().extension())
+               {
+                  list_btn = lv_list_add_btn(src_list, LV_SYMBOL_FILE, p.path().filename().c_str());
+                  media    = VLC::Media(mp_obj.vlcInstance, p.path(), VLC::Media::FromPath);
+               }
+            }
          }
-
-         lv_obj_set_event_cb(list_btn, src_ddl_evHandler);
-         file_map[list_btn].first  = p;
-         file_map[list_btn].second = media;
+         if (list_btn)
+         {
+            lv_obj_set_event_cb(list_btn, src_ddl_evHandler);
+            file_map[list_btn].first  = p;
+            file_map[list_btn].second = media;
+            lv_obj_set_parent(list_btn, md_list_scrbl);
+         }
       }
 
       for (auto& p : file_map)
@@ -141,16 +181,45 @@ public:
          std::cout << p.first << " : " << p.second.first << " : " << p.second.second << '\n';
       }
    }
-} file_selector_obj;
+   
+   ~file_selector()
+   {
+      lv_obj_del(src_list);
+      lv_obj_del(md_list);
+   }
 
+   static gui_level_base *create()
+   {
+      return(new file_selector);
+   }
+};
+
+void back_btn_cb(lv_obj_t *obj, lv_event_t event)
+{
+   gui_mgr_obj.change_gui_level(gui_mgr_obj.create_parent_func, nullptr);
+}
 
 void src_ddl_evHandler(lv_obj_t *obj, lv_event_t event)
 {
    if (is_double_tap(obj, event))
    {
-      auto media_file = file_selector_obj.file_map.at(obj);
-      mp_obj.plr.setMedia(media_file.second);
-      mp_obj.plr.play();
+      lv_obj_t *list = lv_obj_get_parent(lv_obj_get_parent(obj));
+      lv_obj_t *btn  = lv_list_get_next_btn(list, NULL);
+      while (btn != NULL)
+      {
+         auto  file_selector_obj = dynamic_cast < file_selector * > (gui_mgr_obj.gui_level);
+         auto& map_pair          = file_selector_obj->file_map.at(btn);
+         auto& media_file        = map_pair.second;
+         if (media_file)
+         {
+            mp_obj.mList.addMedia(media_file);
+         }
+         btn = lv_list_get_next_btn(list, btn);
+      }
+      mp_obj.mListPlayer.play();
+      auto  file_selector_obj = dynamic_cast < file_selector * > (gui_mgr_obj.gui_level);
+      file_selector_obj->file_map.clear();
+      gui_mgr_obj.change_gui_level(md_list_mgr::create, nullptr);
    }
 }
 
@@ -166,11 +235,9 @@ int main(int argc, char **argv)
 
    /*Initialize the HAL (display, input devices, tick) for LVGL*/
    hal_init();
-   file_selector_obj.create_ddl();
-   back_btn back_btn_obj;
-   gui_mgr  gui_mgr_obj;
-   back_btn_obj.init_back_btn();
-   gui_mgr_obj.change_gui_level(&back_btn::create);
+   back_level_btn back_level_btn_obj;
+   gui_mgr_obj.change_gui_level(file_selector::create, nullptr);
+   // gui_mgr_obj.change_gui_level(&back_level_btn::create, nullptr);
 
    while (1)
    {
@@ -218,11 +285,6 @@ static void hal_init(void)
     * You have to call 'lv_tick_inc()' in periodically to inform LittelvGL about
     * how much time were elapsed Create an SDL thread to do this*/
    SDL_CreateThread(tick_thread, "tick", NULL);
-
-   /* Optional:
-    * Create a memory monitor task which prints the memory usage in
-    * periodically.*/
-   //lv_task_create(memory_monitor, 5000, LV_TASK_PRIO_MID, NULL);
 }
 
 /**
@@ -241,21 +303,6 @@ static int tick_thread(void *data)
    }
 
    return(0);
-}
-
-/**
- * Print the memory usage periodically
- * @param param
- */
-static void memory_monitor(lv_task_t *param)
-{
-   (void)param; /*Unused*/
-
-   lv_mem_monitor_t mon;
-   lv_mem_monitor(&mon);
-   printf("used: %6d (%3d %%), frag: %3d %%, biggest free: %6d\n",
-          (int)mon.total_size - mon.free_size, mon.used_pct, mon.frag_pct,
-          (int)mon.free_biggest_size);
 }
 
 /* Helper function to provid double click functionality. */
