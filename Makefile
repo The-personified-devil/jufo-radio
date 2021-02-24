@@ -18,7 +18,7 @@ OBJ_DIR = obj
 LDFLAGS ?= -lSDL2 -lm -lpthread -g -lvlc -pg
 CFLAGS += -std=c++17
 
-WARNINGS ?= -w -Wall -Wextra \
+WARNINGS ?= -fsanitize=address -w -Wall -Wextra \
 			-Wshadow -Wundef -Wmaybe-uninitialized -Wmissing-prototypes -Wno-discarded-qualifiers \
 			-Wno-unused-function -Wno-error=strict-prototypes -Wpointer-arith -fno-strict-aliasing -Wno-error=cpp -Wuninitialized \
 			-Wno-unused-parameter -Wno-missing-field-initializers -Wno-format-nonliteral -Wno-cast-qual -Wunreachable-code -Wno-switch-default  \
@@ -30,7 +30,10 @@ WARNINGS ?= -w -Wall -Wextra \
 #Collect the files to compile
 MAINSRC = src/main.cpp
 CSRCS += $(MAINSRC)
-
+CSRCS += src/hdd_local_icn.c
+CSRCS += src/play_btn_icn.c
+CSRCS += src/pause_btn_icn.c
+CSRCS += src/play_again_btn_icn.c
 
 AOBJS = $(ASRCS:.S=$(OBJEXT))
 COBJS_RAW_1 = $(CSRCS:.c=$(OBJEXT))
