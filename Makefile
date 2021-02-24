@@ -6,7 +6,8 @@
 include external/lvgl/lvgl.mk
 
 # Variables
-CC = g++
+CC = g++   
+CCC = gcc 
 DIR ?= ${shell pwd}
 OBJEXT ?= .o
 BIN = ${OUT_DIR}/radio
@@ -16,7 +17,7 @@ OUT_DIR = bin
 OBJ_DIR = obj
 
 LDFLAGS ?= -lSDL2 -lm -lpthread -g -lvlc -pg
-CFLAGS += -std=c++17
+CFLAGS += -std=c++17 -I/usr/include
 
 WARNINGS ?= -fsanitize=address -w -Wall -Wextra \
 			-Wshadow -Wundef -Wmaybe-uninitialized -Wmissing-prototypes -Wno-discarded-qualifiers \

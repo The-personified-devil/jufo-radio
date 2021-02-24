@@ -35,6 +35,20 @@ void onEndReached();
 lv_indev_t *kb_indev;
 lv_indev_t *mouse_indev;
 
+class named_mList
+{
+public:
+   VLC::MediaList mList;
+   std::string    name = "Unbenannte Playlist";
+
+   named_mList(VLC::MediaList arg_mList, std::string arg_name)
+   {
+      mList = arg_mList;
+      name  = arg_name;
+   }
+
+   named_mList() = default;
+};
 
 class mp
 {
@@ -43,15 +57,17 @@ public:
    VLC::MediaPlayer             plr         = VLC::MediaPlayer(vlcInstance);
    VLC::MediaPlayerEventManager evMgr       = plr.eventManager();
 
-   VLC::MediaList       mList       = VLC::MediaList(vlcInstance);
-   VLC::MediaListPlayer mListPlayer = VLC::MediaListPlayer(vlcInstance);
+   VLC::MediaList       current_mList = VLC::MediaList(vlcInstance);
+   VLC::MediaListPlayer mListPlayer   = VLC::MediaListPlayer(vlcInstance);
+
+   std::vector < named_mList > mList_list;
 
    mp()
    {
       auto regevent = evMgr.onEndReached(onEndReached);
 
       mListPlayer.setMediaPlayer(plr);
-      mListPlayer.setMediaList(mList);
+      mListPlayer.setMediaList(current_mList);
       // vlcInstance.addIntf((std::string)"");
    }
 
@@ -137,7 +153,7 @@ public:
    }
 };
 
-class main_menu: public gui_level_base  // Remember to disable back button
+class main_menu: public gui_level_base    // Remember to disable back button
 {
 public:
    lv_obj_t *icon_page = lv_page_create(lv_scr_act(), NULL);
@@ -181,19 +197,24 @@ public:
    static gui_level_base *create();
 };
 
-class md_list_mgr: public gui_level_base // Maybe integrate playlist preview
+class md_list_mgr: public gui_level_base    // Maybe integrate playlist preview
 {
 public:
    lv_obj_t *playlist_list = lv_list_create(lv_scr_act(), NULL);
    lv_obj_t *play_btn      = lv_btn_create(lv_scr_act(), NULL);
    lv_obj_t *create_btn    = lv_btn_create(lv_scr_act(), NULL);
    lv_obj_t *edit_btn      = lv_btn_create(lv_scr_act(), NULL);
-   lv_obj_t *remove_btn = lv_btn_create(lv_scr_act(), NULL);
+   lv_obj_t *remove_btn    = lv_btn_create(lv_scr_act(), NULL);
 
-   lv_obj_t *play_label = lv_label_create(play_btn, NULL);
+   lv_obj_t *play_label   = lv_label_create(play_btn, NULL);
    lv_obj_t *create_label = lv_label_create(create_btn, NULL);
-   lv_obj_t *edit_label = lv_label_create(edit_btn, NULL);
-   lv_obj_t* remove_label = lv_label_create(remove_btn, NULL);
+   lv_obj_t *edit_label   = lv_label_create(edit_btn, NULL);
+   lv_obj_t *remove_label = lv_label_create(remove_btn, NULL);
+
+   named_mList temp_list;
+   std::map < lv_obj_t *, named_mList > list_map;
+
+   lv_obj_t *last_focused_list_btn = nullptr;
 
    md_list_mgr();
 
@@ -285,7 +306,7 @@ local_player::~local_player()
    lv_obj_del(progress_bar);
 }
 
-void local_player::set_play_btn_img(bool clicked) // Add actions
+void local_player::set_play_btn_img(bool clicked)    // Add actions
 {
    auto mp_state = mp_obj.mListPlayer.state();
 
@@ -327,7 +348,7 @@ void local_player::set_play_btn_img(bool clicked) // Add actions
       lv_imgbtn_set_src(play_btn, LV_STATE_DEFAULT, play_again_btn_icn_ptr);
       if (clicked)
       {
-         mp_obj.mListPlayer.play(); // Maybe needs to go back to index one before playing again
+         mp_obj.mListPlayer.play();    // Maybe needs to go back to index one before playing again
       }
       break;
 
@@ -352,19 +373,39 @@ md_list_mgr::md_list_mgr()
    lv_obj_align(playlist_list, NULL, LV_ALIGN_IN_LEFT_MID, 5, 30);
 
 
-   lv_obj_set_size(play_btn, 150, 50);
-   lv_obj_align(play_btn, NULL, LV_ALIGN_IN_BOTTOM_RIGHT, -25, -25);
+   lv_obj_set_size(play_btn, 250, 50);
+   lv_obj_align(play_btn, NULL, LV_ALIGN_IN_BOTTOM_RIGHT, -25, -225);
+   lv_label_set_text(play_label, "Playlist abspielen");
 
-   lv_label_set_text(play_label, "Abspielen");
+   lv_obj_set_size(create_btn, 250, 50);
+   lv_obj_align(create_btn, NULL, LV_ALIGN_IN_BOTTOM_RIGHT, -25, -155);
+   lv_label_set_text(create_label, "Playlist erstellen");
 
-   static lv_style_t play_label_style;
-   lv_style_init(&play_label_style);
-   lv_style_set_text_font(&play_label_style, LV_STATE_DEFAULT, &lv_font_montserrat_30);
-   lv_obj_add_style(play_btn, LV_LABEL_PART_MAIN, &play_label_style);
+   lv_obj_set_size(edit_btn, 250, 50);
+   lv_obj_align(edit_btn, NULL, LV_ALIGN_IN_BOTTOM_RIGHT, -25, -85);
+   lv_label_set_text(edit_label, "Playlist bearbeiten");
+
+   lv_obj_set_size(remove_btn, 250, 50);
+   lv_obj_align(remove_btn, NULL, LV_ALIGN_IN_BOTTOM_RIGHT, -25, -25);
+   lv_label_set_text(remove_label, "Playlist entfernen");
+
+   static lv_style_t btn_label_style;
+   lv_style_init(&btn_label_style);
+   lv_style_set_text_font(&btn_label_style, LV_STATE_DEFAULT, &lv_font_montserrat_24);
+   lv_obj_add_style(play_btn, LV_LABEL_PART_MAIN, &btn_label_style);
+   lv_obj_add_style(create_btn, LV_LABEL_PART_MAIN, &btn_label_style);
+   lv_obj_add_style(edit_btn, LV_LABEL_PART_MAIN, &btn_label_style);
+   lv_obj_add_style(remove_btn, LV_LABEL_PART_MAIN, &btn_label_style);
 
    static lv_style_t play_btn_style;
    lv_style_init(&play_btn_style);
-   lv_style_set_bg_color(&play_label_style, LV_STATE_DEFAULT, LV_COLOR_GREEN);
+   // lv_style_set_bg_color(&play_label_style, LV_STATE_DEFAULT, LV_COLOR_GREEN);
+   //
+   for (named_mList& p : mp_obj.mList_list)
+   {
+      lv_obj_t *list_btn = lv_list_add_btn(playlist_list, LV_SYMBOL_LIST, p.name.c_str());
+      list_map[list_btn] = p;
+   }
 
    std::cout << "Reached md_list_mgr" << std::endl;
 }
@@ -483,6 +524,43 @@ void local_play_btn_cb(lv_obj_t *obj, lv_event_t event)
    }
 }
 
+void ml_mgr_list_cb(lv_obj_t *obj, lv_event_t event)
+{
+   if (is_double_tap(obj, event))
+   {
+      auto ml_mgr_obj = dynamic_cast < md_list_mgr * > (gui_mgr_obj.gui_level);
+
+      mp_obj.mListPlayer.stop();
+      mp_obj.mListPlayer.setMediaList(nullptr); // Is this even valid or do we have to set an empty playlist?
+      mp_obj.current_mList = ml_mgr_obj->list_map.at(obj).mList;
+      mp_obj.mListPlayer.setMediaList(mp_obj.current_mList);
+      mp_obj.mListPlayer.play();
+      gui_mgr_obj.change_gui_level(local_player::create, nullptr);
+   }
+   if (event == LV_EVENT_PRESSED)
+   {
+      auto ml_mgr_obj = dynamic_cast < md_list_mgr * > (gui_mgr_obj.gui_level);
+      ml_mgr_obj->last_focused_list_btn = obj;
+   }
+}
+
+void ml_mgr_play_cb(lv_obj_t *obj, lv_event_t event)
+{
+   if (event == LV_EVENT_PRESSED)
+   {
+      auto md_list_mgr_obj = dynamic_cast < md_list_mgr * > (gui_mgr_obj.gui_level);
+      if (md_list_mgr_obj->last_focused_list_btn != nullptr)
+      {
+         mp_obj.mListPlayer.stop();
+         mp_obj.mListPlayer.setMediaList(nullptr); // Is this even valid or do we have to set an empty playlist?
+         mp_obj.current_mList = md_list_mgr_obj->list_map.at(md_list_mgr_obj->last_focused_list_btn).mList;
+         mp_obj.mListPlayer.setMediaList(mp_obj.current_mList);
+         mp_obj.mListPlayer.play();
+         gui_mgr_obj.change_gui_level(local_player::create, nullptr);
+      }
+   }
+}
+
 void back_btn_cb(lv_obj_t *obj, lv_event_t event)
 {
    if (event == LV_EVENT_PRESSED)
@@ -506,7 +584,7 @@ void src_ddl_evHandler(lv_obj_t *obj, lv_event_t event)
          auto& media_file        = map_pair.second;
          if (media_file)
          {
-            mp_obj.mList.addMedia(media_file);
+            mp_obj.current_mList.addMedia(media_file);
          }
          btn = lv_list_get_next_btn(list, btn);
       }
@@ -580,7 +658,7 @@ static void hal_init(void)
 
    /*Create a display*/
    lv_disp_drv_t disp_drv;
-   lv_disp_drv_init(&disp_drv); /*Basic initialization*/
+   lv_disp_drv_init(&disp_drv);             /*Basic initialization*/
    disp_drv.buffer   = &disp_buf1;
    disp_drv.flush_cb = monitor_flush;
    lv_disp_drv_register(&disp_drv);
@@ -589,7 +667,7 @@ static void hal_init(void)
     * Use the 'mouse' driver which reads the PC's mouse*/
    mouse_init();
    lv_indev_drv_t indev_drv;
-   lv_indev_drv_init(&indev_drv); /*Basic initialization*/
+   lv_indev_drv_init(&indev_drv);             /*Basic initialization*/
    indev_drv.type = LV_INDEV_TYPE_POINTER;
 
    /*This function will be called periodically (by the library) to get the mouse position and state*/
@@ -613,8 +691,8 @@ static int tick_thread(void *data)
 
    while (1)
    {
-      SDL_Delay(5);   /*Sleep for 5 millisecond*/
-      lv_tick_inc(5); /*Tell LittelvGL that 5 milliseconds were elapsed*/
+      SDL_Delay(5);               /*Sleep for 5 millisecond*/
+      lv_tick_inc(5);             /*Tell LittelvGL that 5 milliseconds were elapsed*/
    }
 
    return(0);
