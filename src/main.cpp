@@ -28,6 +28,12 @@ bool is_double_tap(lv_obj_t *& obj, lv_event_t&);
 /* Callbacks */
 void menu_btn_cb(lv_obj_t *obj, lv_event_t event);
 void local_play_btn_cb(lv_obj_t *obj, lv_event_t event);
+void ml_mgr_list_cb(lv_obj_t *obj, lv_event_t event);
+void ml_mgr_play_cb(lv_obj_t *obj, lv_event_t event);
+void ml_mgr_create_cb(lv_obj_t *obj, lv_event_t event);
+void ml_mgr_edit_cb(lv_obj_t *obj, lv_event_t event);
+void ml_mgr_remove_cb(lv_obj_t *obj, lv_event_t event);
+void file_selector_finish(lv_obj_t *obj, lv_event_t event);
 void back_btn_cb(lv_obj_t *obj, lv_event_t event);
 void src_ddl_evHandler(lv_obj_t *obj, lv_event_t event);
 void onEndReached();
@@ -40,11 +46,13 @@ class named_mList
 public:
    VLC::MediaList mList;
    std::string    name = "Unbenannte Playlist";
+   long           key;
 
-   named_mList(VLC::MediaList arg_mList, std::string arg_name)
+   named_mList(VLC::MediaList arg_mList, std::string arg_name, long arg_key)
    {
       mList = arg_mList;
       name  = arg_name;
+      key   = arg_key;
    }
 
    named_mList() = default;
@@ -60,7 +68,8 @@ public:
    VLC::MediaList       current_mList = VLC::MediaList(vlcInstance);
    VLC::MediaListPlayer mListPlayer   = VLC::MediaListPlayer(vlcInstance);
 
-   std::vector < named_mList > mList_list;
+   std::map < long, named_mList > mList_list;
+   named_mList temp_mList;
 
    mp()
    {
@@ -211,7 +220,6 @@ public:
    lv_obj_t *edit_label   = lv_label_create(edit_btn, NULL);
    lv_obj_t *remove_label = lv_label_create(remove_btn, NULL);
 
-   named_mList temp_list;
    std::map < lv_obj_t *, named_mList > list_map;
 
    lv_obj_t *last_focused_list_btn = nullptr;
@@ -227,9 +235,22 @@ class file_selector: public gui_level_base
 {
 public:
    std::map < lv_obj_t *, std::pair < std::filesystem::directory_entry, VLC::Media >> file_map;
-   lv_obj_t *src_list         = lv_list_create(lv_scr_act(), NULL);
-   lv_obj_t *md_list          = lv_list_create(lv_scr_act(), NULL);
-   lv_obj_t *change_list_list = lv_page_create(md_list, NULL);
+   lv_obj_t *src_list  = lv_list_create(lv_scr_act(), NULL);
+   lv_obj_t *md_list   = lv_list_create(lv_scr_act(), NULL);
+   lv_obj_t *up_btn    = lv_btn_create(lv_scr_act(), NULL);
+   lv_obj_t *down_btn  = lv_btn_create(lv_scr_act(), NULL);
+   lv_obj_t *left_btn  = lv_btn_create(lv_scr_act(), NULL);
+   lv_obj_t *right_btn = lv_btn_create(lv_scr_act(), NULL);
+   lv_obj_t *finish_btn = lv_btn_create(lv_scr_act(), NULL);
+
+   lv_obj_t* up_btn_label = lv_label_create(up_btn, NULL);
+   lv_obj_t* down_btn_label = lv_label_create(down_btn, NULL);
+   lv_obj_t* left_btn_label = lv_label_create(left_btn, NULL);
+   lv_obj_t* right_btn_label = lv_label_create(right_btn, NULL);
+   lv_obj_t* finish_btn_label = lv_label_create(finish_btn, NULL);
+
+   lv_style_t btn_style;
+   lv_style_t btn_label_style;
 
    file_selector();
 
@@ -376,18 +397,22 @@ md_list_mgr::md_list_mgr()
    lv_obj_set_size(play_btn, 250, 50);
    lv_obj_align(play_btn, NULL, LV_ALIGN_IN_BOTTOM_RIGHT, -25, -225);
    lv_label_set_text(play_label, "Playlist abspielen");
+   lv_obj_set_event_cb(play_btn, ml_mgr_play_cb);
 
    lv_obj_set_size(create_btn, 250, 50);
    lv_obj_align(create_btn, NULL, LV_ALIGN_IN_BOTTOM_RIGHT, -25, -155);
    lv_label_set_text(create_label, "Playlist erstellen");
+   lv_obj_set_event_cb(create_btn, ml_mgr_create_cb);
 
    lv_obj_set_size(edit_btn, 250, 50);
    lv_obj_align(edit_btn, NULL, LV_ALIGN_IN_BOTTOM_RIGHT, -25, -85);
    lv_label_set_text(edit_label, "Playlist bearbeiten");
+   lv_obj_set_event_cb(edit_btn, ml_mgr_edit_cb);
 
    lv_obj_set_size(remove_btn, 250, 50);
    lv_obj_align(remove_btn, NULL, LV_ALIGN_IN_BOTTOM_RIGHT, -25, -25);
    lv_label_set_text(remove_label, "Playlist entfernen");
+   lv_obj_set_event_cb(remove_btn, ml_mgr_remove_cb);
 
    static lv_style_t btn_label_style;
    lv_style_init(&btn_label_style);
@@ -401,10 +426,14 @@ md_list_mgr::md_list_mgr()
    lv_style_init(&play_btn_style);
    // lv_style_set_bg_color(&play_label_style, LV_STATE_DEFAULT, LV_COLOR_GREEN);
    //
-   for (named_mList& p : mp_obj.mList_list)
+   //
+   auto iter = mp_obj.mList_list.begin();
+   while (iter != mp_obj.mList_list.end())
    {
-      lv_obj_t *list_btn = lv_list_add_btn(playlist_list, LV_SYMBOL_LIST, p.name.c_str());
-      list_map[list_btn] = p;
+      lv_obj_t *list_btn = lv_list_add_btn(playlist_list, LV_SYMBOL_LIST, iter->second.name.c_str());
+      list_map[list_btn] = iter->second;
+      lv_obj_set_event_cb(list_btn, ml_mgr_list_cb);
+      iter++;
    }
 
    std::cout << "Reached md_list_mgr" << std::endl;
@@ -414,6 +443,9 @@ md_list_mgr::~md_list_mgr()
 {
    lv_obj_del(playlist_list);
    lv_obj_del(play_btn);
+   lv_obj_del(create_btn);
+   lv_obj_del(edit_btn);
+   lv_obj_del(remove_btn);
 }
 
 gui_level_base *md_list_mgr::create()
@@ -432,6 +464,8 @@ file_selector::file_selector()
    lv_obj_t *md_list_scrbl  = lv_page_get_scrollable(md_list);
    auto      dir_iterator   = std::filesystem::directory_iterator("bin");
    lv_obj_t *list_btn       = nullptr;
+
+
 
    for (auto& p : dir_iterator)
    {
@@ -459,40 +493,63 @@ file_selector::file_selector()
          lv_obj_set_event_cb(list_btn, src_ddl_evHandler);
          file_map[list_btn].first  = p;
          file_map[list_btn].second = media;
-         // lv_obj_set_parent(list_btn, md_list_scrbl);
-         // lv_obj_set_drag(list_btn, true);
-         // lv_obj_set_drag_parent(list_btn, false);
-         // lv_page_glue_obj(list_btn, false);
-         // lv_cont_set_layout(md_list_scrbl, LV_LAYOUT_OFF);
-         // lv_btn_set_fit(list_btn, LV_FIT_NONE);
-         lv_obj_set_size(change_list_list, 200, 460);
-         // lv_page_ext_t* change_list_list_ext = (lv_page_ext_t*) lv_obj_get_ext_attr(change_list_list);
-         // list_btn->drag_parent_obj = src_list_scrbl;
-         lv_obj_type_t buf;
-         lv_obj_get_type(md_list, &buf);
-         std::cout << "duck" << std::endl;
-         for (auto p : buf.type)
-         {
-            std::cout << p << std::endl;
-         }
       }
-      lv_list_add_btn(md_list, NULL, NULL);
-      lv_list_add_btn(md_list, NULL, NULL);
-      lv_list_add_btn(md_list, NULL, NULL);
-      lv_list_add_btn(md_list, NULL, NULL);
-      lv_list_add_btn(src_list, NULL, NULL);
-      lv_list_add_btn(src_list, NULL, NULL);
-      lv_list_add_btn(src_list, NULL, NULL);
-      lv_list_add_btn(src_list, NULL, NULL);
    }
-   lv_page_set_scroll_propagation(change_list_list, true);
-   lv_obj_t *change_list_list_scrbl = lv_page_get_scrl(change_list_list);
-   change_list_list_scrbl->drag_parent_obj = src_list_scrbl;
 
    for (auto& p : file_map)
    {
       std::cout << p.first << " : " << p.second.first << " : " << p.second.second << '\n';
    }
+
+   lv_obj_set_size(left_btn, 50, 50);
+   lv_obj_align(left_btn, NULL, LV_ALIGN_IN_TOP_MID, -30, 0);
+
+   lv_obj_set_size(right_btn, 50, 50);
+   lv_obj_align(right_btn, NULL, LV_ALIGN_IN_TOP_MID, 30, 0);
+
+
+   lv_obj_set_size(up_btn, 50, 50);
+   lv_obj_align(up_btn, NULL, LV_ALIGN_IN_TOP_MID, 170, 0);
+
+
+   lv_obj_set_size(down_btn, 50, 50);
+   lv_obj_align(down_btn, NULL, LV_ALIGN_IN_TOP_MID, 230, 0);
+
+
+   lv_obj_set_size(finish_btn, 50, 50);
+   lv_obj_align(finish_btn, NULL, LV_ALIGN_IN_TOP_RIGHT, 0, 0);
+
+   lv_style_init(&btn_label_style);
+   lv_style_set_opa_scale(&btn_label_style, LV_STATE_DEFAULT, LV_OPA_COVER);
+   lv_style_set_text_font(&btn_label_style, LV_STATE_DEFAULT, &lv_font_montserrat_30);
+   lv_obj_add_style(left_btn_label, LV_LABEL_PART_MAIN, &btn_label_style);
+   lv_label_set_text(left_btn_label, LV_SYMBOL_LEFT);
+
+
+   lv_obj_add_style(right_btn_label, LV_LABEL_PART_MAIN, &btn_label_style);
+   lv_label_set_text(right_btn_label, LV_SYMBOL_RIGHT);
+
+
+   lv_obj_add_style(up_btn_label, LV_LABEL_PART_MAIN, &btn_label_style);
+   lv_label_set_text(up_btn_label, LV_SYMBOL_UP);
+
+
+   lv_obj_add_style(down_btn_label, LV_LABEL_PART_MAIN, &btn_label_style);
+   lv_label_set_text(down_btn_label, LV_SYMBOL_DOWN);
+
+
+   lv_obj_add_style(finish_btn_label, LV_LABEL_PART_MAIN, &btn_label_style);
+   lv_label_set_text(finish_btn_label, LV_SYMBOL_OK);
+
+   lv_style_init(&btn_style);
+   lv_style_set_opa_scale(&btn_style, LV_STATE_DEFAULT, LV_OPA_TRANSP);
+   lv_obj_add_style(left_btn, LV_BTN_PART_MAIN, &btn_style);
+   lv_obj_add_style(right_btn, LV_BTN_PART_MAIN, &btn_style);
+   lv_obj_add_style(up_btn, LV_BTN_PART_MAIN, &btn_style);
+   lv_obj_add_style(down_btn, LV_BTN_PART_MAIN, &btn_style);
+   lv_obj_add_style(finish_btn, LV_BTN_PART_MAIN, &btn_style);
+
+   lv_obj_set_event_cb(finish_btn, file_selector_finish);
 }
 
 file_selector::~file_selector()
@@ -561,11 +618,71 @@ void ml_mgr_play_cb(lv_obj_t *obj, lv_event_t event)
    }
 }
 
+void ml_mgr_create_cb(lv_obj_t *obj, lv_event_t event)
+{
+   if (event == LV_EVENT_PRESSED)
+   {
+      mp_obj.temp_mList = named_mList(VLC::MediaList(mp_obj.vlcInstance), "Unbenannte Playlist", mp_obj.mList_list.size() + 1);
+      gui_mgr_obj.change_gui_level(file_selector::create, nullptr);
+   }
+}
+
+void ml_mgr_edit_cb(lv_obj_t *obj, lv_event_t event)
+{
+   if (event == LV_EVENT_PRESSED)
+   {
+      auto md_list_mgr_obj = dynamic_cast < md_list_mgr * > (gui_mgr_obj.gui_level);
+      if (md_list_mgr_obj->last_focused_list_btn != nullptr)
+      {
+         mp_obj.temp_mList = md_list_mgr_obj->list_map.at(md_list_mgr_obj->last_focused_list_btn);
+         gui_mgr_obj.change_gui_level(file_selector::create, nullptr);
+      }
+   }
+}
+
+void ml_mgr_remove_cb(lv_obj_t *obj, lv_event_t event)
+{
+   if (event == LV_EVENT_PRESSED)
+   {
+      auto md_list_mgr_obj = dynamic_cast < md_list_mgr * > (gui_mgr_obj.gui_level);
+      if (md_list_mgr_obj->last_focused_list_btn != nullptr)
+      {
+         mp_obj.mList_list.erase(mp_obj.mList_list.find(md_list_mgr_obj->list_map.at(obj).key));
+         gui_mgr_obj.change_gui_level(md_list_mgr::create, nullptr);
+      }
+   }
+}
+
 void back_btn_cb(lv_obj_t *obj, lv_event_t event)
 {
    if (event == LV_EVENT_PRESSED)
    {
       gui_mgr_obj.change_gui_level(gui_mgr_obj.create_parent_func, nullptr);
+   }
+}
+
+void file_selector_finish(lv_obj_t *obj, lv_event_t event)
+{
+   if (event == LV_EVENT_PRESSED)
+   {
+      auto file_selector_obj = dynamic_cast < file_selector * > (gui_mgr_obj.gui_level);
+
+      lv_obj_t *btn = lv_list_get_next_btn(file_selector_obj->md_list, NULL);
+      while (btn != NULL)
+      {
+         auto& map_pair   = file_selector_obj->file_map.at(btn);
+         auto& media_file = map_pair.second;
+         if (media_file)
+         {
+            mp_obj.temp_mList.mList.addMedia(media_file);
+         }
+         btn = lv_list_get_next_btn(file_selector_obj->md_list, btn);
+      }
+
+      mp_obj.mList_list[mp_obj.temp_mList.key] = mp_obj.temp_mList;    // Does this even work?
+      mp_obj.mListPlayer.stop();
+      mp_obj.mListPlayer.setMediaList(nullptr);
+      mp_obj.current_mList = nullptr; // Right?
    }
 }
 
