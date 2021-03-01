@@ -536,9 +536,7 @@ file_selector::file_selector()
       std::filesystem::directory_entry file_entr = std::filesystem::directory_entry(fixed_mrl);
       lv_obj_t* list_bttn = lv_list_add_btn(md_list, LV_SYMBOL_AUDIO, file_entr.path().filename().c_str()); 
       file_map_dest[list_bttn].first = file_entr;
-      mp_obj.temp_mList.mList.lock();
       file_map_dest[list_bttn].second = md->duplicate();
-      mp_obj.temp_mList.mList.unlock();
       // std::cout << md->mrl() << std::endl;
       
 
@@ -728,7 +726,9 @@ void file_selector_finish(lv_obj_t *obj, lv_event_t event)
             auto& media_file = map_pair.second;
             if (media_file)
             {
+               // mp_obj.temp_mList.mList.lock();
                mp_obj.temp_mList.mList.addMedia(media_file);
+               // mp_obj.temp_mList.mList.unlock();
             }
             btn = lv_list_get_next_btn(file_selector_obj->md_list, btn);
          }
