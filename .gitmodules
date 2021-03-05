@@ -1,9 +1,3 @@
-[submodule "external/vlc/libvlcpp"]
-	path = external/vlc/libvlcpp
-	url = https://github.com/videolan/libvlcpp.git
-[submodule "external/vlc/vlc"]
-	path = external/vlc/vlc
-	url = https://github.com/videolan/vlc-3.0.git
 [submodule "external/lvgl/lvgl"]
 	path = external/lvgl/lvgl
 	url = https://github.com/The-personified-devil/lvgl
